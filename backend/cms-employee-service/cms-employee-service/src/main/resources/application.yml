@@ -1,0 +1,102 @@
+spring:
+  application:
+    name : cms-employee-service
+  datasource:
+    driver-class-name: org.postgresql.Driver
+#    password: root
+#    url: jdbc:postgresql://localhost:5432/new-emp-migration
+    password: pgadmin
+#    url: jdbc:postgresql://43.205.24.208:5432/cdl-employee-mig-test
+    url: jdbc:postgresql://43.205.24.208:5432/cdl-emp-new-data-mig
+    username: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+
+  codec:
+    max-in-memory-size: 1GB
+  webflux:
+    client:
+      max-in-memory-size: 1GB
+      connection-timeout: 5000ms
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 500MB
+  cache:
+    type: redis
+  redis:
+    host: localhost
+    port: 6379
+
+
+reactor:
+  netty:
+    io:
+      select-strategy: default
+      worker-count: 8
+
+server:
+#  port: 8086
+  port: 9020
+
+
+
+employee:
+  document:
+    fetch:
+      API: http://43.205.24.208:9023/documents/access/
+#      API: http://localhost:9091/documents/access/
+    post:
+#      API: http://localhost:9091/documents/upload/
+      API: http://43.205.24.208:9023/documents/upload/
+    upload:
+      directory : root-employee_document
+    delete:
+      API: http://43.205.24.208:9023/documents/
+#      API: http://localhost:9091/documents/
+    update:
+#      API: http://localhost:9091/documents/update/
+      API: http://43.205.24.208:9023/documents/update/
+company:
+  policy:
+    path : root-company_policies
+    files:
+      API : http://43.205.24.208:9023/documents/company-policies
+    openFile:
+      API : http://43.205.24.208:9023/documents/company-policies/access/
+
+myDocuments:
+  API : http://43.205.24.208:9023/documents/my-documents/
+
+user:
+  fetch:
+#    byUserIdAPI: http://localhost:8505/user/get/
+    byUserIdAPI: http://43.205.24.208:9021/user/get/
+#    getAllUserAPI: http://localhost:8505/user/getAll
+    getAllUserAPI: http://43.205.24.208:9021/user/getAll
+#    byLocationAPI: http://localhost:8505/user/by/location/
+    byLocationAPI: http://43.205.24.208:9021/user/by/location/
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      empService:
+        failure-rate-threshold: 50
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+  timelimiter:
+    instances:
+      empService:
+        timeout-duration: 60s
+
+
