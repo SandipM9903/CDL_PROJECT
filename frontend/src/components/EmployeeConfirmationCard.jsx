@@ -1,104 +1,150 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom'; // Added useParams and useLocation
 import { MdCall } from "react-icons/md";
-import ViewDetails from './ViewDetails';
+import ViewDetails from './ViewDetails'; // Assuming ViewDetails component exists and is correctly imported
 
 const EmployeeConfirmation = () => {
-    const navigate = useNavigate();
+    const navigate = useNavigate(); // Re-introduced useNavigate
+    const { empId } = useParams(); // Get empId from URL parameters
+    const location = useLocation(); // Get current location object
+
+    const [employees, setEmployees] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [showViewDetails, setShowViewDetails] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [activeFilter, setActiveFilter] = useState('All');
 
-    const employees = [
-        {
-            id: 1,
-            profilePic: 'https://randomuser.me/api/portraits/thumb/men/1.jpg',
-            name: 'Mehul Shaikh',
-            email: 'mehul_shaikh@cms.co.in',
-            role: 'Sr JAVA developer',
-            phoneNumber: '8886979270',
-            r1ApprovalStatus: 'Completed',
-            hrStatus: 'Pending',
-            department: 'SSD',
-            rsManager: 'Harish kumar',
-            dateOfJoining: '16-04-2025',
-            probationDays: '90 Days',
-            actualProbationEndDate: '17-07-2025',
-            probationExtendedNoOfTimes: '0',
-            status: 'Probation',
-            confirmationOverdueDays: '3',
-            currentProbationEndDate: '17-07-2025',
-        },
-        {
-            id: 2,
-            profilePic: 'https://via.placeholder.com/48',
-            name: 'Jane Doe',
-            email: 'jane.doe@example.com',
-            role: 'Frontend Developer',
-            phoneNumber: '9876543210',
-            r1ApprovalStatus: 'Completed',
-            hrStatus: 'Completed',
-            department: 'Web Dev',
-            rsManager: 'Alice Smith',
-            dateOfJoining: '01-03-2024',
-            probationDays: '60 Days',
-            actualProbationEndDate: '30-04-2024',
-            probationExtendedNoOfTimes: '0',
-            status: 'Confirmed',
-            confirmationOverdueDays: '0',
-            currentProbationEndDate: '30-04-2024',
-        },
-        {
-            id: 3,
-            profilePic: 'https://via.placeholder.com/48',
-            name: 'John Smith',
-            email: 'john.smith@example.com',
-            role: 'Backend Engineer',
-            phoneNumber: '7778889990',
-            r1ApprovalStatus: 'Pending',
-            hrStatus: 'Pending',
-            department: 'Backend',
-            rsManager: 'Bob Johnson',
-            dateOfJoining: '10-01-2025',
-            probationDays: '90 Days',
-            actualProbationEndDate: '10-04-2025',
-            probationExtendedNoOfTimes: '1',
-            status: 'Probation Extended',
-            confirmationOverdueDays: '15',
-            currentProbationEndDate: '25-05-2025',
-        },
-        {
-            id: 4,
-            profilePic: 'https://via.placeholder.com/48',
-            name: 'Preethi Sharma',
-            email: 'preethi.sharma@cms.co.in',
-            role: 'Senior Java developer',
-            phoneNumber: '9629680844',
-            r1ApprovalStatus: 'Completed',
-            hrStatus: 'Pending',
-            department: 'Software Solutions & Delivery',
-            rsManager: 'Harish Kumar',
-            dateOfJoining: '01-02-2024',
-            probationDays: '90 Days',
-            actualProbationEndDate: '01-05-2024',
-            probationExtendedNoOfTimes: '3',
-            status: 'Probation Extended',
-            confirmationOverdueDays: '2',
-            currentProbationEndDate: '01-05-2025',
-        },
-    ];
+    // Utility function to format a Date object to DD-MM-YYYY
+    const formatDate = (date) => {
+        if (!date) return 'N/A';
+        const d = new Date(date);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+    };
 
-    const filteredEmployees = employees.filter(employee => {
-        if (activeFilter === 'All') {
-            return employee.status === 'Probation' || employee.status === 'Probation Extended';
-        } else if (activeFilter === 'Probation') {
-            return employee.status === 'Probation';
-        } else if (activeFilter === 'Probation Extended') {
-            return employee.status === 'Probation Extended';
+// Inside your EmployeeConfirmation.jsx component
+
+useEffect(() => {
+    const fetchEmployees = async () => {
+        try {
+            const response = await fetch('http://localhost:8080/api/probation/employees');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            const transformedData = await Promise.all(data.map(async (item) => {
+                let actualProbationEndDate = 'N/A';
+                let currentProbationEndDate = 'N/A';
+                let probationExtendedNoOfTimes = '0';
+                let status = item.status || 'Probation';
+                let r1ApprovalStatus = item.r1ApprovalStatus || 'Pending';
+                let hrStatus = item.hrStatus || 'Pending';
+
+                if (item.dateOfJoining && typeof item.probationDay === 'number') {
+                    const joinDate = new Date(item.dateOfJoining);
+                    const probationEnd = new Date(joinDate);
+                    probationEnd.setDate(joinDate.getDate() + item.probationDay);
+                    actualProbationEndDate = formatDate(probationEnd);
+                    currentProbationEndDate = actualProbationEndDate;
+                }
+
+                try {
+                    const probationResponse = await fetch(`http://localhost:8080/api/probation/probation-record/${item.empCode}`);
+                    if (probationResponse.ok) {
+                        const record = await probationResponse.json();
+                        actualProbationEndDate = formatDate(record.actualProbationEndDate);
+                        currentProbationEndDate = formatDate(record.currentProbationEndDate);
+                        probationExtendedNoOfTimes = record.totalNumberExtended?.toString() || '0';
+                        status = record.status || status;
+                        r1ApprovalStatus = record.r1ApprovalStatus || r1ApprovalStatus;
+                        hrStatus = record.hrStatus || hrStatus;
+                        console.log(`✅ Overridden with probation record for ${item.empCode}`);
+                    }
+                } catch (err) {
+                    // Ignore 404s silently
+                    if (!err.message.includes('404')) {
+                        console.warn(`⚠️ Failed to fetch probation record for ${item.empCode}:`, err);
+                    }
+                }
+
+                return {
+                    id: item.empId,
+                    empCode: item.empCode,
+                    profilePic: item.profilePicUrl || 'https://placehold.co/48x48/aabbcc/ffffff?text=EMP',
+                    name: `${item.firstName || ''} ${item.lastName || ''}`.trim(),
+                    email: item.emailId,
+                    role: item.roles,
+                    phoneNumber: item.primaryContactNo,
+                    rsManager: item.reportingManager,
+                    dateOfJoining: formatDate(item.dateOfJoining),
+                    probationDays: item.probationDay ? `${item.probationDay} Days` : 'N/A',
+                    department: item.department || 'N/A',
+                    r1ApprovalStatus,
+                    hrStatus,
+                    probationExtendedNoOfTimes,
+                    confirmationOverdueDays: '0',
+                    actualProbationEndDate,
+                    currentProbationEndDate,
+                    status,
+                };
+            }));
+
+            setEmployees(transformedData);
+        } catch (error) {
+            console.error("❌ Error fetching employees:", error);
+            setError("Failed to load employees. Please ensure your Spring Boot API is running.");
+        } finally {
+            setLoading(false);
         }
-        return true;
-    });
+    };
 
+    fetchEmployees();
+}, []);
+
+
+
+
+
+
+    // Effect to handle direct URL access for employee details
+    useEffect(() => {
+        if (!loading && empId && employees.length > 0) {
+            const employeeFromUrl = employees.find(emp => String(emp.id) === empId);
+            if (employeeFromUrl) {
+                setSelectedEmployee(employeeFromUrl);
+                setShowViewDetails(true);
+            } else {
+                // If empId is in URL but employee not found, navigate back
+                navigate('/', { replace: true });
+            }
+        } else if (!loading && !empId && showViewDetails) {
+            // If we are on the base path but modal is open, close it
+            setShowViewDetails(false);
+            setSelectedEmployee(null);
+        }
+    }, [empId, employees, loading, navigate, showViewDetails]);
+
+
+   // Updated filter logic
+const filteredEmployees = employees.filter(employee => {
+    const normalizedStatus = employee.status?.toLowerCase();
+
+    if (activeFilter === 'All') {
+        return normalizedStatus === 'probation' || normalizedStatus.includes('extended');
+    } else if (activeFilter === 'Probation') {
+        return normalizedStatus === 'probation';
+    } else if (activeFilter === 'Probation Extended') {
+        return normalizedStatus.includes('extended');
+    }
+    return true;
+});
+
+    // EmployeeCard component to render individual employee details
     const EmployeeCard = ({ employee }) => {
         const [showEmailDropdown, setShowEmailDropdown] = useState(false);
         const emailWrapperRef = useRef(null);
@@ -118,7 +164,9 @@ const EmployeeConfirmation = () => {
         }, []);
 
         const handleViewDetails = () => {
-            navigate(`/view-details/${employee.id}`);
+            setSelectedEmployee(employee);
+            setShowViewDetails(true);
+            navigate(`/view-details/${employee.empCode}`);
         };
 
         return (
@@ -127,7 +175,7 @@ const EmployeeConfirmation = () => {
                 <div className="flex flex-col sm:flex-row justify-between border-b border-gray-200 pb-4 mb-4 gap-y-4 sm:gap-y-0 min-w-0">
                     {/* Employee Info (Image, Name, Email, Phone, Role) */}
                     <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1">
-                        <img src={employee.profilePic} alt={employee.name} className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
+                        <img src={employee.profilePic || 'https://placehold.co/48x48/aabbcc/ffffff?text=EMP'} alt={employee.name} className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
                         <div className="flex flex-col gap-1 min-w-0 flex-grow">
                             <p className="font-semibold text-lg text-gray-800 truncate">{employee.name}</p>
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-x-2 gap-y-1 relative min-w-0" ref={emailWrapperRef}>
@@ -235,7 +283,7 @@ const EmployeeConfirmation = () => {
                         <p className="text-gray-800 font-semibold break-words">{employee.department}</p>
                     </div>
                     <div>
-                        <p className="text-gray-500 text-xs">RS Manager</p>
+                        <p className="text-gray-500 text-xs">R1 Manager</p>
                         <p className="text-gray-900 font-bold break-words">{employee.rsManager}</p>
                     </div>
                     <div>
@@ -273,15 +321,21 @@ const EmployeeConfirmation = () => {
                     </div>
 
                     <div className="flex justify-center sm:justify-end sm:col-span-1">
-                        <button class="text-red-600 font-semibold flex items-center gap-1 hover:text-red-700 transition duration-200" onClick={handleViewDetails}>
-  View Details
-  <span class="text-lg">→</span>
-</button>
+                        <button className="text-red-600 font-semibold flex items-center gap-1 hover:text-red-700 transition duration-200" onClick={handleViewDetails}>
+                            View Details
+                            <span className="text-lg">→</span>
+                        </button>
 
                     </div>
                 </div>
             </div>
         );
+    };
+
+    const handleCloseViewDetails = () => {
+        setShowViewDetails(false);
+        setSelectedEmployee(null);
+        navigate('/', { replace: true }); // Navigate back to the base path when modal closes
     };
 
     return (
@@ -335,7 +389,12 @@ const EmployeeConfirmation = () => {
 
                 {/* Employee List */}
                 <div className="space-y-6 flex flex-col items-center">
-                    {filteredEmployees.map((employee) => (
+                    {loading && <p className="text-gray-700 text-lg">Loading employees...</p>}
+                    {error && <p className="text-red-600 text-lg">{error}</p>}
+                    {!loading && !error && filteredEmployees.length === 0 && (
+                        <p className="text-gray-700 text-lg">No employees found for the selected filter.</p>
+                    )}
+                    {!loading && !error && filteredEmployees.map((employee) => (
                         <EmployeeCard key={employee.id} employee={employee} />
                     ))}
                 </div>
@@ -345,7 +404,7 @@ const EmployeeConfirmation = () => {
             {showViewDetails && selectedEmployee && (
                 <ViewDetails
                     employee={selectedEmployee}
-                    onClose={() => setShowViewDetails(false)}
+                    onClose={handleCloseViewDetails} // Use the new handler
                 />
             )}
         </div>
