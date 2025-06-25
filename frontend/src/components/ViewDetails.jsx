@@ -4,11 +4,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import ProbationEvaluation from './ProbationEvaluation';
 import axios from 'axios';
 
-// Helper function to format dates - make sure this is defined
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'Invalid Date'; // Handle invalid date strings
+    if (isNaN(date.getTime())) return 'Invalid Date';
     return date.toLocaleDateString('en-GB', {
         day: '2-digit',
         month: '2-digit',
@@ -54,8 +53,8 @@ export default function ViewDetails({ onClose }) {
     const handleExtendDateChange = (e) => {
         const date = e.target.value;
         setExtendDate(date);
+        console.log('Selected Extend Date:', date);
 
-        // Calculate days from today
         const today = new Date();
         const selectedDate = new Date(date);
         const timeDiff = selectedDate.getTime() - today.getTime();
@@ -98,7 +97,6 @@ export default function ViewDetails({ onClose }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // Helper function to convert date to ISO format
         const formatToISO = (dateStr) => {
             if (!dateStr || dateStr === 'N/A') return null;
             if (dateStr.includes('/')) {
@@ -114,11 +112,9 @@ export default function ViewDetails({ onClose }) {
         }
 
         try {
-            // Step 1: Fetch latest evaluation record
             const evalResponse = await axios.get(`http://localhost:8080/api/probation/probation-evaluation/latest/${employee.empCode}`);
             const latestEvaluation = evalResponse.data;
 
-            // Step 2: Fetch latest 6-month evaluation record
             const evalSixResponse = await axios.get(`http://localhost:8080/api/probation/probation-evaluation-six/latest/${employee.empCode}`);
             const latestEvaluationSix = evalSixResponse.data;
 
@@ -129,8 +125,6 @@ export default function ViewDetails({ onClose }) {
                 alert("⚠️ Probation evaluation ID not available. Please make sure evaluations are filled.");
                 return;
             }
-
-            // Step 3: Construct payload and submit the probation record
             const payload = {
                 ...formData,
                 totalNumberExtended: Number(formData.totalNumberExtended),
@@ -141,7 +135,7 @@ export default function ViewDetails({ onClose }) {
                 currentProbationEndDate: formatToISO(formData.currentProbationEndDate),
                 extendedDate: formatToISO(formData.extendedDate),
             };
-
+            console.log('📋 Form Data:', payload.currentProbationEndDate);
             console.log('🚀 Sending Payload:', payload);
             const response = await axios.post('http://localhost:8080/api/probation/probation-record', payload);
             console.log('✅ Successfully submitted:', response.data);
@@ -151,10 +145,6 @@ export default function ViewDetails({ onClose }) {
             alert('Something went wrong! See console for details.');
         }
     };
-    ;
-
-
-
     useEffect(() => {
         const setupFormForTermination = async () => {
             if (selectedAction === 'terminate' && employee?.empCode && terminateDate) {
@@ -178,7 +168,6 @@ export default function ViewDetails({ onClose }) {
                         probationEvaluationId: employee.probationEvaluationId || null,
                         probationEvaluationSixMonthsId: employee.probationEvaluationSixMonthsId || null
                     }));
-
                 } catch (err) {
                     console.error('Error fetching probationEvaluationId for termination:', err);
                     alert('Failed to fetch evaluation ID for termination.');
@@ -188,8 +177,6 @@ export default function ViewDetails({ onClose }) {
 
         setupFormForTermination();
     }, [selectedAction, employee, terminateDate, comments]);
-
-
 
     useEffect(() => {
         const setupFormForExtension = async () => {
@@ -210,8 +197,8 @@ export default function ViewDetails({ onClose }) {
                         currentProbationEndDate: extendDate || '',
                         r1ApprovalStatus: 'Approved',
                         hrStatus: 'Pending',
-                        probationEvaluationId: employee.probationEvaluationId || null,               // ✅ 3-month
-                        probationEvaluationSixMonthsId: employee.probationEvaluationSixMonthsId || null // ✅ 6-month
+                        probationEvaluationId: employee.probationEvaluationId || null,
+                        probationEvaluationSixMonthsId: employee.probationEvaluationSixMonthsId || null
                     }));
 
                 } catch (err) {
@@ -223,8 +210,6 @@ export default function ViewDetails({ onClose }) {
 
         setupFormForExtension();
     }, [selectedAction, employee, extendDate, extendDays]);
-
-
 
     useEffect(() => {
         if (!employee?.empCode) return;
@@ -249,8 +234,6 @@ export default function ViewDetails({ onClose }) {
                 }
 
                 let data = await response.json();
-
-                // Calculate actual probation end date
                 let actualProbationEndDate = 'N/A';
                 if (data.dateOfJoining && typeof data.probationDay === 'number') {
                     const joinDate = new Date(data.dateOfJoining);
@@ -261,12 +244,26 @@ export default function ViewDetails({ onClose }) {
 
                 const currentProbationEndDate = actualProbationEndDate;
                 let dueForConfirmationDays = '0';
-                if (actualProbationEndDate !== 'N/A' && currentProbationEndDate !== 'N/A') {
-                    const actualDate = new Date(actualProbationEndDate);
-                    const currentDate = new Date(currentProbationEndDate);
-                    const diffTime = currentDate - actualDate;
-                    dueForConfirmationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                if (currentProbationEndDate !== 'N/A') {
+                    // Convert DD/MM/YYYY to YYYY-MM-DD for Date constructor
+                    const parts = currentProbationEndDate.split('/');
+                    if (parts.length === 3) {
+                        const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                        const today = new Date();
+                        const endDate = new Date(formattedDate);
+
+                        // Set time to midnight to avoid partial day rounding issues
+                        today.setHours(0, 0, 0, 0);
+                        endDate.setHours(0, 0, 0, 0);
+
+                        const diffTime = today.getTime() - endDate.getTime();
+                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                        dueForConfirmationDays = diffDays > 0 ? diffDays.toString() : '0';
+                    }
                 }
+
 
                 const transformedEmployee = {
                     id: data.empCode,
@@ -292,7 +289,6 @@ export default function ViewDetails({ onClose }) {
                     location: data.location || 'N/A',
                 };
 
-                // 🔁 Try to get probation record, but don't break if it doesn't exist
                 try {
                     const probationRecordResponse = await axios.get(`http://localhost:8080/api/probation/probation-record/${empCode}`);
                     const probationRecord = probationRecordResponse.data;
@@ -320,6 +316,34 @@ export default function ViewDetails({ onClose }) {
                             transformedEmployee.currentProbationEndDate = probationRecord.currentProbationEndDate;
                         }
                     }
+
+                    let dueForConfirmationDays = '0';
+const endDateRaw = probationRecord?.currentProbationEndDate;
+
+if (endDateRaw) {
+    let formattedDate;
+
+    if (endDateRaw.includes('/')) {
+        const parts = endDateRaw.split('/');
+        if (parts.length === 3) {
+            formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+    } else {
+        formattedDate = endDateRaw;
+    }
+
+    const today = new Date();
+    const endDate = new Date(formattedDate);
+    today.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+
+    const diffTime = today.getTime() - endDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    dueForConfirmationDays = diffDays > 0 ? diffDays.toString() : '0';
+}
+
+transformedEmployee.dueForConfirmationDays = dueForConfirmationDays;
+
                 } catch (probationErr) {
                     if (probationErr.response?.status === 404) {
                         console.warn('No probation record found for this employee.');
@@ -327,7 +351,6 @@ export default function ViewDetails({ onClose }) {
                         console.warn('Failed to fetch probation record:', probationErr.message);
                     }
                 }
-
                 console.log('Transformed Employee Data (ready for state):', transformedEmployee);
                 setEmployee(transformedEmployee);
             } catch (error) {
@@ -346,7 +369,6 @@ export default function ViewDetails({ onClose }) {
             setError("Employee code not provided in URL.");
         }
     }, [empCode]);
-    // Re-run effect if empCode changes
 
     useEffect(() => {
         const fetchEvaluationIdAndSetForm = async () => {
@@ -394,9 +416,6 @@ export default function ViewDetails({ onClose }) {
         }
     }, [employee?.empCode]);
 
-
-
-    // Show loading indicator
     if (loading) {
         return (
             <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
@@ -405,7 +424,6 @@ export default function ViewDetails({ onClose }) {
         );
     }
 
-    // Show error message
     if (error) {
         return (
             <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
@@ -417,7 +435,6 @@ export default function ViewDetails({ onClose }) {
         );
     }
 
-    // If employee data is not available after loading (e.g., empCode was not provided or data not found)
     if (!employee) {
         return (
             <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
@@ -429,12 +446,10 @@ export default function ViewDetails({ onClose }) {
         );
     }
 
-    // Fallback for profile picture initial if employee.name is not available
     const profileInitial = employee.name ? employee.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'NA';
 
     const handleActionChange = (event) => {
         setSelectedAction(event.target.value);
-        // Reset fields when action changes
         setExtendDate('');
         setExtendDays('');
         setTerminateDate('');
@@ -462,13 +477,9 @@ export default function ViewDetails({ onClose }) {
                     <br />
                     <div className="p-8">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Left Column: Employee Profile and Probation Details */}
                             <div className="lg:col-span-2 space-y-6">
-                                {/* Employee Profile Card - Changed border color */}
                                 <div className="bg-white rounded-lg shadow-md p-6 w-full max-w-5xl mx-auto border border-[#978d8d]">
-                                    {/* 4-Column Details Grid */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-6 text-sm">
-                                        {/* Column 1: Profile photo, Name, Role */}
                                         <div className="flex flex-col items-center sm:items-start lg:col-span-1">
                                             <div className="relative mb-4">
                                                 <img
@@ -486,7 +497,6 @@ export default function ViewDetails({ onClose }) {
                                             <p className="text-sm text-gray-600 text-center sm:text-left">{employee.role}</p>
                                         </div>
 
-                                        {/* Column 2: Employee ID, Department, Joining Date */}
                                         <div className="lg:col-span-1">
                                             <div>
                                                 <p className="text-gray-500">Employee ID</p>
@@ -502,7 +512,6 @@ export default function ViewDetails({ onClose }) {
                                             </div>
                                         </div>
 
-                                        {/* Column 3: Contact No, R1 Manager, Project/Cost Centre */}
                                         <div className="lg:col-span-1">
                                             <div>
                                                 <p className="text-gray-500">Contact No</p>
@@ -518,7 +527,6 @@ export default function ViewDetails({ onClose }) {
                                             </div>
                                         </div>
 
-                                        {/* Column 4: Email, Location */}
                                         <div className="lg:col-span-1">
                                             <div>
                                                 <p className="text-gray-500">Email</p>
@@ -532,7 +540,6 @@ export default function ViewDetails({ onClose }) {
                                     </div>
                                 </div>
 
-                                {/* Probation Details Card - Changed border color */}
                                 <div className="bg-white  shadow-md p-6 border border-[#978d8d]">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 text-sm">
                                         <div className="flex flex-col">
@@ -562,7 +569,6 @@ export default function ViewDetails({ onClose }) {
                                     </div>
                                 </div>
 
-                                {/* Probation Evaluation Form - Changed border color */}
                                 <div className="bg-white shadow-md p-6 flex flex-col md:flex-row items-center justify-between border border-[#978d8d]">
                                     <div className="flex items-center mb-4 md:mb-0">
                                         <span className="text-gray-800 font-medium mr-1">Probation Evaluation and confirmation form</span>
@@ -573,7 +579,6 @@ export default function ViewDetails({ onClose }) {
                                     </button>
                                 </div>
 
-                                {/* Action Selection and Conditional Inputs */}
                                 <div className="bg-white rounded-lg shadow-md p-6">
                                     <div className="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 md:space-x-8 mb-4">
                                         <label className="flex items-center cursor-pointer">
@@ -611,7 +616,6 @@ export default function ViewDetails({ onClose }) {
                                         </label>
                                     </div>
 
-                                    {/* Conditional Fields based on selectedAction */}
                                     {selectedAction === 'extend' && (
                                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                                             <div className="flex items-center justify-between w-full">
@@ -733,7 +737,6 @@ export default function ViewDetails({ onClose }) {
                                     </div>
                                 </div>
 
-                                {/* Action Buttons */}
                                 <div className="flex justify-center md:justify-end space-x-4 mt-6">
                                     <button
                                         onClick={() => navigate(-1)}
@@ -747,11 +750,9 @@ export default function ViewDetails({ onClose }) {
                                 </div>
                             </div>
 
-                            {/* Right Column: Timeline - Changed border color */}
                             <div className="lg:col-span-1 bg-white rounded-lg shadow-md p-6 border border-[#978d8d]">
                                 <h3 className="text-lg font-semibold text-gray-800 mb-6">Timeline</h3>
 
-                                {/* Accepted Status */}
                                 <div className="flex items-start mb-6">
                                     <div className="flex-shrink-0 w-10 h-10 bg-green-100 text-green-700 font-bold rounded-full flex items-center justify-center text-sm mr-3">
                                         {employee.rsManager ? employee.rsManager.split(' ').map(n => n[0]).join('').toUpperCase() : 'AS'}
@@ -762,7 +763,6 @@ export default function ViewDetails({ onClose }) {
                                     </div>
                                 </div>
 
-                                {/* Comment Box (for general comments, separate from action-specific comments) */}
                                 <div className="mb-6">
                                     <textarea
                                         className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
@@ -771,10 +771,9 @@ export default function ViewDetails({ onClose }) {
                                     ></textarea>
                                 </div>
 
-                                {/* Probation Extension Entries (Dynamic based on probationExtendedNoOfTimes) */}
                                 <div className="space-y-6">
                                     {probationHistory
-                                        .sort((a, b) => b.totalNumberExtended - a.totalNumberExtended) // Optional: newest first
+                                        .sort((a, b) => b.totalNumberExtended - a.totalNumberExtended)
                                         .map((record, index) => {
                                             const probationEvaluationId = record.probationEvaluation?.id;
                                             const probationEvaluationSixId = record.probationEvaluationSixMonths?.id;

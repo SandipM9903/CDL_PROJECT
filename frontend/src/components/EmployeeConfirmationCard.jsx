@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom'; // Added useParams and useLocation
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { MdCall } from "react-icons/md";
-import ViewDetails from './ViewDetails'; // Assuming ViewDetails component exists and is correctly imported
+import ViewDetails from './ViewDetails';
 
 const EmployeeConfirmation = () => {
-    const navigate = useNavigate(); // Re-introduced useNavigate
-    const { empId } = useParams(); // Get empId from URL parameters
-    const location = useLocation(); // Get current location object
+    const navigate = useNavigate();
+    const { empId } = useParams();
+    const location = useLocation();
 
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -14,104 +14,195 @@ const EmployeeConfirmation = () => {
     const [showViewDetails, setShowViewDetails] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [activeFilter, setActiveFilter] = useState('All');
+    const [showPercentDropdown, setShowPercentDropdown] = useState(false);
+    const percentWrapperRef = useRef(null);
+    const [activeHiredDropdownId, setActiveHiredDropdownId] = useState(null);
 
-    // Utility function to format a Date object to DD-MM-YYYY
+
+
     const formatDate = (date) => {
         if (!date) return 'N/A';
         const d = new Date(date);
         const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+        const month = String(d.getMonth() + 1).padStart(2, '0');
         const year = d.getFullYear();
         return `${day}-${month}-${year}`;
     };
 
-// Inside your EmployeeConfirmation.jsx component
+    useEffect(() => {
+        const fetchEmployees = async () => {
+            try {
+                const response = await fetch('http://localhost:8080/api/probation/employees');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
 
-useEffect(() => {
-    const fetchEmployees = async () => {
-        try {
-            const response = await fetch('http://localhost:8080/api/probation/employees');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+
+                const transformedData = await Promise.all(data.map(async (item) => {
+                    let actualProbationEndDate = 'N/A';
+                    let currentProbationEndDate = 'N/A';
+                    let probationExtendedNoOfTimes = '0';
+                    let status = item.status || 'Probation';
+                    let r1ApprovalStatus = item.r1ApprovalStatus || 'Pending';
+                    let hrStatus = item.hrStatus || 'Pending';
+                    let createdAt = null;
+
+                    if (item.dateOfJoining && typeof item.probationDay === 'number') {
+                        const joinDate = new Date(item.dateOfJoining);
+                        const probationEnd = new Date(joinDate);
+                        probationEnd.setDate(joinDate.getDate() + item.probationDay);
+                        actualProbationEndDate = formatDate(probationEnd);
+                        currentProbationEndDate = actualProbationEndDate;
+                    }
+
+                    try {
+                        const probationResponse = await fetch(`http://localhost:8080/api/probation/probation-record/${item.empCode}`);
+                        if (probationResponse.ok) {
+                            const record = await probationResponse.json();
+                            createdAt = record.createdAt ? new Date(record.createdAt) : null;
+                            if (createdAt) {
+                                createdAt = new Date(Date.UTC(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate()));
+                            }
+
+
+                            actualProbationEndDate = formatDate(record.actualProbationEndDate);
+                            currentProbationEndDate = formatDate(record.currentProbationEndDate);
+                            probationExtendedNoOfTimes = record.totalNumberExtended?.toString() || '0';
+                            status = record.status || status;
+                            r1ApprovalStatus = record.r1ApprovalStatus || r1ApprovalStatus;
+                            hrStatus = record.hrStatus || hrStatus;
+                            console.log(`✅ Overridden with probation record for ${item.empCode}`);
+                        }
+                    } catch (err) {
+                        if (!err.message.includes('404')) {
+                            console.warn(`⚠️ Failed to fetch probation record for ${item.empCode}:`, err);
+                        }
+                    }
+
+                    let hiredPercent = 0;
+                    let extensionBars = [];
+
+                    try {
+                        if (
+                            item.dateOfJoining &&
+                            actualProbationEndDate !== 'N/A' &&
+                            currentProbationEndDate !== 'N/A'
+                        ) {
+                            const today = new Date();
+
+                            const [joinDay, joinMonth, joinYear] = formatDate(item.dateOfJoining).split('-');
+                            const [actualDay, actualMonth, actualYear] = actualProbationEndDate.split('-');
+                            const [currentDay, currentMonth, currentYear] = currentProbationEndDate.split('-');
+
+                            const joinDate = new Date(Date.UTC(joinYear, joinMonth - 1, joinDay));
+                            const actualEndDate = new Date(Date.UTC(actualYear, actualMonth - 1, actualDay));
+                            const currentEndDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay));
+                            const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+
+                            // ✅ Calculate Main Probation percent (can be > 100%)
+                            const mainTotalDays = Math.floor((actualEndDate - joinDate) / (1000 * 60 * 60 * 24));
+                            const mainElapsedDays = Math.floor((todayUTC - joinDate) / (1000 * 60 * 60 * 24));
+                            const mainPercent = Math.round((mainElapsedDays / mainTotalDays) * 100);
+
+                            hiredPercent += mainPercent;
+                            extensionBars.push({ label: "Main Probation", percent: mainPercent });
+
+
+
+                            // ✅ Extension logic
+                            const extensions = parseInt(probationExtendedNoOfTimes || "0", 10);
+
+                            // Push full 100% bars for previous extensions (assumed complete)
+                            for (let i = 0; i < extensions - 1; i++) {
+                                extensionBars.push({ label: `Extended Probation ${i + 1}`, percent: 100 });
+                                hiredPercent += 100;
+                            }
+
+                            // For the most recent extension, calculate from `createdAt` to `currentProbationEndDate`
+                            if (extensions > 0 && createdAt && currentEndDate > actualEndDate) {
+                                const extensionTotal = Math.floor((currentEndDate - createdAt) / (1000 * 60 * 60 * 24));
+                                let extensionElapsed = Math.floor((todayUTC - createdAt) / (1000 * 60 * 60 * 24));
+                                if (extensionElapsed < 0 || todayUTC.getTime() === createdAt.getTime()) extensionElapsed = 0;
+
+                                const extensionPercent = Math.round((extensionElapsed / extensionTotal) * 100);
+                                extensionBars.push({ label: `Extended Probation ${extensions}`, percent: extensionPercent });
+                                hiredPercent += extensionPercent;
+                            }
+
+
+                            hiredPercent = Math.min(hiredPercent, 300);
+                        }
+                    } catch (e) {
+                        console.warn("⚠️ Error calculating hiredPercent:", e);
+                        hiredPercent = 100;
+                    }
+
+
+
+                    let extendedPercent = null;
+                    try {
+                        if (
+                            probationExtendedNoOfTimes !== '0' &&
+                            actualProbationEndDate !== 'N/A' &&
+                            currentProbationEndDate !== 'N/A'
+                        ) {
+                            const [actualDay, actualMonth, actualYear] = actualProbationEndDate.split('-');
+                            const [currentDay, currentMonth, currentYear] = currentProbationEndDate.split('-');
+
+                            const actualDate = new Date(`${actualYear}-${actualMonth}-${actualDay}`);
+                            const currentDate = new Date(`${currentYear}-${currentMonth}-${currentDay}`);
+                            const today = new Date();
+
+                            const totalExtendedDays = Math.max(1, Math.ceil((currentDate - actualDate) / (1000 * 60 * 60 * 24)));
+                            const elapsedExtendedDays = Math.max(0, Math.ceil((today - actualDate) / (1000 * 60 * 60 * 24)));
+
+                            extendedPercent = Math.round((elapsedExtendedDays / totalExtendedDays) * 100);
+                            extendedPercent = Math.min(extendedPercent, 300);
+                        }
+                    } catch (e) {
+                        console.warn("⚠️ Error calculating extendedPercent:", e);
+                        extendedPercent = null;
+                    }
+
+
+
+
+                    return {
+                        id: item.empId,
+                        empCode: item.empCode,
+                        profilePic: item.profilePicUrl || 'https://placehold.co/48x48/aabbcc/ffffff?text=EMP',
+                        name: `${item.firstName || ''} ${item.lastName || ''}`.trim(),
+                        email: item.emailId,
+                        role: item.roles,
+                        phoneNumber: item.primaryContactNo,
+                        rsManager: item.reportingManager,
+                        dateOfJoining: formatDate(item.dateOfJoining),
+                        probationDays: item.probationDay ? `${item.probationDay} Days` : 'N/A',
+                        department: item.department || 'N/A',
+                        r1ApprovalStatus,
+                        hrStatus,
+                        probationExtendedNoOfTimes,
+                        confirmationOverdueDays: '0',
+                        actualProbationEndDate,
+                        currentProbationEndDate,
+                        status,
+                        hiredPercent,
+                        extendedPercent,
+                        extensionBars,
+                    };
+                }));
+                setEmployees(transformedData);
+            } catch (error) {
+                console.error("❌ Error fetching employees:", error);
+                setError("Failed to load employees. Please ensure your Spring Boot API is running.");
+            } finally {
+                setLoading(false);
             }
+        };
+        fetchEmployees();
+    }, []);
 
-            const data = await response.json();
-
-            const transformedData = await Promise.all(data.map(async (item) => {
-                let actualProbationEndDate = 'N/A';
-                let currentProbationEndDate = 'N/A';
-                let probationExtendedNoOfTimes = '0';
-                let status = item.status || 'Probation';
-                let r1ApprovalStatus = item.r1ApprovalStatus || 'Pending';
-                let hrStatus = item.hrStatus || 'Pending';
-
-                if (item.dateOfJoining && typeof item.probationDay === 'number') {
-                    const joinDate = new Date(item.dateOfJoining);
-                    const probationEnd = new Date(joinDate);
-                    probationEnd.setDate(joinDate.getDate() + item.probationDay);
-                    actualProbationEndDate = formatDate(probationEnd);
-                    currentProbationEndDate = actualProbationEndDate;
-                }
-
-                try {
-                    const probationResponse = await fetch(`http://localhost:8080/api/probation/probation-record/${item.empCode}`);
-                    if (probationResponse.ok) {
-                        const record = await probationResponse.json();
-                        actualProbationEndDate = formatDate(record.actualProbationEndDate);
-                        currentProbationEndDate = formatDate(record.currentProbationEndDate);
-                        probationExtendedNoOfTimes = record.totalNumberExtended?.toString() || '0';
-                        status = record.status || status;
-                        r1ApprovalStatus = record.r1ApprovalStatus || r1ApprovalStatus;
-                        hrStatus = record.hrStatus || hrStatus;
-                        console.log(`✅ Overridden with probation record for ${item.empCode}`);
-                    }
-                } catch (err) {
-                    // Ignore 404s silently
-                    if (!err.message.includes('404')) {
-                        console.warn(`⚠️ Failed to fetch probation record for ${item.empCode}:`, err);
-                    }
-                }
-
-                return {
-                    id: item.empId,
-                    empCode: item.empCode,
-                    profilePic: item.profilePicUrl || 'https://placehold.co/48x48/aabbcc/ffffff?text=EMP',
-                    name: `${item.firstName || ''} ${item.lastName || ''}`.trim(),
-                    email: item.emailId,
-                    role: item.roles,
-                    phoneNumber: item.primaryContactNo,
-                    rsManager: item.reportingManager,
-                    dateOfJoining: formatDate(item.dateOfJoining),
-                    probationDays: item.probationDay ? `${item.probationDay} Days` : 'N/A',
-                    department: item.department || 'N/A',
-                    r1ApprovalStatus,
-                    hrStatus,
-                    probationExtendedNoOfTimes,
-                    confirmationOverdueDays: '0',
-                    actualProbationEndDate,
-                    currentProbationEndDate,
-                    status,
-                };
-            }));
-
-            setEmployees(transformedData);
-        } catch (error) {
-            console.error("❌ Error fetching employees:", error);
-            setError("Failed to load employees. Please ensure your Spring Boot API is running.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    fetchEmployees();
-}, []);
-
-
-
-
-
-
-    // Effect to handle direct URL access for employee details
     useEffect(() => {
         if (!loading && empId && employees.length > 0) {
             const employeeFromUrl = employees.find(emp => String(emp.id) === empId);
@@ -119,35 +210,31 @@ useEffect(() => {
                 setSelectedEmployee(employeeFromUrl);
                 setShowViewDetails(true);
             } else {
-                // If empId is in URL but employee not found, navigate back
                 navigate('/', { replace: true });
             }
         } else if (!loading && !empId && showViewDetails) {
-            // If we are on the base path but modal is open, close it
             setShowViewDetails(false);
             setSelectedEmployee(null);
         }
     }, [empId, employees, loading, navigate, showViewDetails]);
 
+    const filteredEmployees = employees.filter(employee => {
+        const normalizedStatus = employee.status?.toLowerCase();
 
-   // Updated filter logic
-const filteredEmployees = employees.filter(employee => {
-    const normalizedStatus = employee.status?.toLowerCase();
+        if (activeFilter === 'All') {
+            return normalizedStatus === 'probation' || normalizedStatus.includes('extended');
+        } else if (activeFilter === 'Probation') {
+            return normalizedStatus === 'probation';
+        } else if (activeFilter === 'Probation Extended') {
+            return normalizedStatus.includes('extended');
+        }
+        return true;
+    });
 
-    if (activeFilter === 'All') {
-        return normalizedStatus === 'probation' || normalizedStatus.includes('extended');
-    } else if (activeFilter === 'Probation') {
-        return normalizedStatus === 'probation';
-    } else if (activeFilter === 'Probation Extended') {
-        return normalizedStatus.includes('extended');
-    }
-    return true;
-});
-
-    // EmployeeCard component to render individual employee details
     const EmployeeCard = ({ employee }) => {
         const [showEmailDropdown, setShowEmailDropdown] = useState(false);
         const emailWrapperRef = useRef(null);
+        const percentWrapperRef = useRef(null);
 
         const toggleEmailDropdown = () => {
             setShowEmailDropdown(!showEmailDropdown);
@@ -169,11 +256,35 @@ const filteredEmployees = employees.filter(employee => {
             navigate(`/view-details/${employee.empCode}`);
         };
 
+        const getProgressColor = (percent) => {
+            if (percent === 100) return 'bg-green-500';
+            if (percent >= 70) return 'bg-cyan-500';
+            if (percent >= 50) return 'bg-yellow-400';
+            return 'bg-gray-400';
+        };
+
+        useEffect(() => {
+            const handleClickOutside = (event) => {
+                if (
+                    percentWrapperRef.current &&
+                    !percentWrapperRef.current.contains(event.target)
+                ) {
+                    setActiveHiredDropdownId(null);
+                }
+            };
+            document.addEventListener("mousedown", handleClickOutside);
+            return () => {
+                document.removeEventListener("mousedown", handleClickOutside);
+            };
+        }, [setActiveHiredDropdownId]);
+
+
+
+
+
         return (
             <div className="bg-[#FAFAFA] rounded-[40px] shadow-lg p-4 sm:p-6 mb-6 mx-auto w-full max-w-full md:max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl overflow-hidden">
-                {/* Top Section */}
                 <div className="flex flex-col sm:flex-row justify-between border-b border-gray-200 pb-4 mb-4 gap-y-4 sm:gap-y-0 min-w-0">
-                    {/* Employee Info (Image, Name, Email, Phone, Role) */}
                     <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1">
                         <img src={employee.profilePic || 'https://placehold.co/48x48/aabbcc/ffffff?text=EMP'} alt={employee.name} className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
                         <div className="flex flex-col gap-1 min-w-0 flex-grow">
@@ -197,6 +308,59 @@ const filteredEmployees = employees.filter(employee => {
                                     <MdCall className="text-gray-600 opacity-50 text-sm" />
                                     <span className="text-gray-600 text-sm">{employee.phoneNumber}</span>
                                 </div>
+
+                                <div
+                                    className="flex items-center gap-2 mt-2 sm:mt-0 mx-auto w-fit relative"
+                                    ref={percentWrapperRef}
+                                >
+                                    <button
+                                        className="flex items-center gap-2 text-sm font-semibold group focus:outline-none"
+                                        onClick={() =>
+                                            setActiveHiredDropdownId(
+                                                activeHiredDropdownId === employee.empCode ? null : employee.empCode
+                                            )
+                                        }
+                                    >
+                                        <div className="w-28 h-2 rounded-full bg-gray-200 overflow-hidden group-hover:shadow-md group-hover:scale-[1.02] transition-transform duration-200">
+                                            <div
+                                                className={`h-full ${getProgressColor(employee.hiredPercent)} rounded-full`}
+                                                style={{ width: `${employee.hiredPercent}%` }}
+                                            ></div>
+                                        </div>
+                                        <span className="text-blue-600 group-hover:text-blue-800 group-hover:transition duration-200">
+                                            {employee.hiredPercent}%
+                                        </span>
+                                    </button>
+
+
+                                    {activeHiredDropdownId === employee.empCode && (
+                                        <div className="absolute left-0 top-full mt-2 w-64 bg-white border border-gray-200 shadow-md rounded-md z-10">
+                                            <div className="px-4 py-2 text-sm text-gray-800 space-y-3">
+
+                                                {employee.extensionBars?.length > 0 ? (
+                                                    employee.extensionBars.map((ext, index) => (
+                                                        <div key={index}>
+                                                            <p className="text-sm font-medium text-gray-700 mb-1">
+                                                                Extended Percentage {index + 1}: {ext.percent}%
+                                                            </p>
+                                                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={`h-full ${getProgressColor(ext.percent)} rounded-full`}
+                                                                    style={{ width: `${ext.percent}%` }}
+                                                                ></div>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <p className="text-sm text-gray-600">No probation extension.</p>
+                                                )}
+
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+
                                 {showEmailDropdown && (
                                     <div className="absolute z-10 bg-white shadow-lg rounded-md mt-2 w-40 left-0 top-full border border-gray-200">
                                         <a href={`mailto:${employee.email}`} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setShowEmailDropdown(false)}>Open Default Client</a>
@@ -214,12 +378,12 @@ const filteredEmployees = employees.filter(employee => {
                             <span className="text-gray-600 text-sm whitespace-nowrap">R1 Approval:</span>
                             <span
                                 className={`flex items-center px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap
-                                ${employee.r1ApprovalStatus === 'Completed'
+                                ${employee.r1ApprovalStatus === 'Approved'
                                         ? 'bg-green-100 text-green-800 border border-green-500'
                                         : 'bg-orange-100 text-orange-800 border border-orange-500'
                                     }`}
                             >
-                                {employee.r1ApprovalStatus === 'Completed' ? (
+                                {employee.r1ApprovalStatus === 'Approved' ? (
                                     <span className="mr-1 text-green-600">✓</span>
                                 ) : (
                                     <svg
@@ -335,7 +499,7 @@ const filteredEmployees = employees.filter(employee => {
     const handleCloseViewDetails = () => {
         setShowViewDetails(false);
         setSelectedEmployee(null);
-        navigate('/', { replace: true }); // Navigate back to the base path when modal closes
+        navigate('/', { replace: true });
     };
 
     return (
@@ -365,7 +529,6 @@ const filteredEmployees = employees.filter(employee => {
                     </button>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex flex-wrap gap-3 mb-8 px-2 sm:px-0">
                     <button
                         className={`px-5 py-2 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${activeFilter === 'All' ? 'bg-[#6bf6bf] text-black border border-black' : 'bg-white text-black border border-gray-800 hover:bg-gray-100'}`}
@@ -387,7 +550,6 @@ const filteredEmployees = employees.filter(employee => {
                     </button>
                 </div>
 
-                {/* Employee List */}
                 <div className="space-y-6 flex flex-col items-center">
                     {loading && <p className="text-gray-700 text-lg">Loading employees...</p>}
                     {error && <p className="text-red-600 text-lg">{error}</p>}
@@ -395,16 +557,15 @@ const filteredEmployees = employees.filter(employee => {
                         <p className="text-gray-700 text-lg">No employees found for the selected filter.</p>
                     )}
                     {!loading && !error && filteredEmployees.map((employee) => (
-                        <EmployeeCard key={employee.id} employee={employee} />
+                        <EmployeeCard key={employee.id} employee={employee} activeHiredDropdownId={activeHiredDropdownId} setActiveHiredDropdownId={setActiveHiredDropdownId} />
                     ))}
                 </div>
             </div>
 
-            {/* View Details Modal */}
             {showViewDetails && selectedEmployee && (
                 <ViewDetails
                     employee={selectedEmployee}
-                    onClose={handleCloseViewDetails} // Use the new handler
+                    onClose={handleCloseViewDetails}
                 />
             )}
         </div>

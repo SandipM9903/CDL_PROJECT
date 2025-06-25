@@ -33,7 +33,7 @@ public class ProbationRecord {
     private int probationDays;
 
     @OneToOne
-    @JoinColumn(name = "probation_evaluation_six_id", referencedColumnName = "id")
+    @JoinColumn(name = "probation_evaluation_overall_id", referencedColumnName = "id")
     private ProbationEvaluationSixMonths probationEvaluationSixMonths;
 
     @Column(name = "manager_emp_code")

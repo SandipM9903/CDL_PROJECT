@@ -529,7 +529,7 @@ public class ProbationService {
             int newExtensionCount = dto.getTotalNumberExtended() + 1;
             record.setTotalNumberExtended(newExtensionCount);
 
-            LocalDate newEndDate = dto.getCurrentProbationEndDate().plusMonths(3);
+            LocalDate newEndDate = dto.getCurrentProbationEndDate().plusMonths(0);
             record.setCurrentProbationEndDate(newEndDate);
 
             if (dto.getExtendedDate() != null) {

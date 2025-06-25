@@ -11,7 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "probation_evaluations_six")
+@Table(name = "probation_evaluations_overall")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
