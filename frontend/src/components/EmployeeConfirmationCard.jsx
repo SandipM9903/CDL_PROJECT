@@ -1,25 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { MdCall } from "react-icons/md";
 import ViewDetails from './ViewDetails';
 
 const EmployeeConfirmation = () => {
     const navigate = useNavigate();
     const { empId } = useParams();
-    const location = useLocation();
-
+    const [searchText, setSearchText] = useState('');
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showViewDetails, setShowViewDetails] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [activeFilter, setActiveFilter] = useState('All');
-    const [showPercentDropdown, setShowPercentDropdown] = useState(false);
-    const percentWrapperRef = useRef(null);
     const [activeHiredDropdownId, setActiveHiredDropdownId] = useState(null);
-
-
-
+    const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+    const [advancedFilter, setAdvancedFilter] = useState({
+        department: '',
+        manager: '',
+    });
     const formatDate = (date) => {
         if (!date) return 'N/A';
         const d = new Date(date);
@@ -40,6 +39,7 @@ const EmployeeConfirmation = () => {
                 const data = await response.json();
 
                 const transformedData = await Promise.all(data.map(async (item) => {
+                    let confirmationOverdueDays = '0';
                     let actualProbationEndDate = 'N/A';
                     let currentProbationEndDate = 'N/A';
                     let probationExtendedNoOfTimes = '0';
@@ -138,7 +138,16 @@ const EmployeeConfirmation = () => {
                         hiredPercent = 100;
                     }
 
-
+                    if (currentProbationEndDate && currentProbationEndDate !== 'N/A') {
+                        const [day, month, year] = currentProbationEndDate.split('-');
+                        const endDate = new Date(`${year}-${month}-${day}T00:00:00`);
+                        const today = new Date();
+                        // Zero out time for today
+                        today.setHours(0, 0, 0, 0);
+                        const diffMs = today - endDate;
+                        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                        confirmationOverdueDays = diffDays > 0 ? diffDays.toString() : '0';
+                    }
 
                     let extendedPercent = null;
                     try {
@@ -165,9 +174,6 @@ const EmployeeConfirmation = () => {
                         extendedPercent = null;
                     }
 
-
-
-
                     return {
                         id: item.empId,
                         empCode: item.empCode,
@@ -190,6 +196,7 @@ const EmployeeConfirmation = () => {
                         hiredPercent,
                         extendedPercent,
                         extensionBars,
+                        confirmationOverdueDays,
                     };
                 }));
                 setEmployees(transformedData);
@@ -221,14 +228,26 @@ const EmployeeConfirmation = () => {
     const filteredEmployees = employees.filter(employee => {
         const normalizedStatus = employee.status?.toLowerCase();
 
-        if (activeFilter === 'All') {
-            return normalizedStatus === 'probation' || normalizedStatus.includes('extended');
-        } else if (activeFilter === 'Probation') {
-            return normalizedStatus === 'probation';
-        } else if (activeFilter === 'Probation Extended') {
-            return normalizedStatus.includes('extended');
-        }
-        return true;
+        const matchesFilter =
+            activeFilter === 'All'
+                ? normalizedStatus === 'probation' || normalizedStatus.includes('extended')
+                : activeFilter === 'Probation'
+                    ? normalizedStatus === 'probation'
+                    : activeFilter === 'Probation Extended'
+                        ? normalizedStatus.includes('extended')
+                        : true;
+
+        const matchesSearch =
+            employee.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+            employee.email?.toLowerCase().includes(searchText.toLowerCase());
+
+        const matchesAdvanced =
+            (!advancedFilter.department ||
+                employee.department?.toLowerCase().includes(advancedFilter.department.toLowerCase())) &&
+            (!advancedFilter.manager ||
+                employee.rsManager?.toLowerCase().includes(advancedFilter.manager.toLowerCase()));
+
+        return matchesFilter && matchesSearch && matchesAdvanced;
     });
 
     const EmployeeCard = ({ employee }) => {
@@ -277,10 +296,6 @@ const EmployeeConfirmation = () => {
                 document.removeEventListener("mousedown", handleClickOutside);
             };
         }, [setActiveHiredDropdownId]);
-
-
-
-
 
         return (
             <div className="bg-[#FAFAFA] rounded-[40px] shadow-lg p-4 sm:p-6 mb-6 mx-auto w-full max-w-full md:max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl overflow-hidden">
@@ -519,16 +534,51 @@ const EmployeeConfirmation = () => {
                             type="text"
                             placeholder="Search Employees"
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value={searchText}
+                            onChange={(e) => setSearchText(e.target.value)}
                         />
+
                     </div>
-                    <button className="flex-shrink-0 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300 w-full sm:w-auto max-w-full">
+                    <button
+                        className="flex-shrink-0 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300 w-full sm:w-auto max-w-full"
+                        onClick={() => {
+                            setShowAdvancedFilter(prev => {
+                                if (prev) {
+                                    setAdvancedFilter({ department: '', manager: '' }); // 🔁 Reset filter fields when hiding
+                                }
+                                return !prev;
+                            });
+                        }}
+                    >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293-.707V19l-4 4v-3.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                         </svg>
                         Advance Filter
                     </button>
-                </div>
 
+                </div>
+                {showAdvancedFilter && (
+                    <div className="mb-6 mt-2 border p-4 rounded-md bg-gray-50 shadow-sm flex flex-col sm:flex-row gap-4">
+                        <input
+                            type="text"
+                            placeholder="Filter by Department"
+                            className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-gray-500 text-sm"
+                            value={advancedFilter.department}
+                            onChange={(e) =>
+                                setAdvancedFilter(prev => ({ ...prev, department: e.target.value }))
+                            }
+                        />
+                        <input
+                            type="text"
+                            placeholder="Filter by R1 Manager"
+                            className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-gray-500 text-sm"
+                            value={advancedFilter.manager}
+                            onChange={(e) =>
+                                setAdvancedFilter(prev => ({ ...prev, manager: e.target.value }))
+                            }
+                        />
+                    </div>
+                )}
                 <div className="flex flex-wrap gap-3 mb-8 px-2 sm:px-0">
                     <button
                         className={`px-5 py-2 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${activeFilter === 'All' ? 'bg-[#6bf6bf] text-black border border-black' : 'bg-white text-black border border-gray-800 hover:bg-gray-100'}`}

@@ -318,31 +318,31 @@ export default function ViewDetails({ onClose }) {
                     }
 
                     let dueForConfirmationDays = '0';
-const endDateRaw = probationRecord?.currentProbationEndDate;
+                    const endDateRaw = probationRecord?.currentProbationEndDate;
 
-if (endDateRaw) {
-    let formattedDate;
+                    if (endDateRaw) {
+                        let formattedDate;
 
-    if (endDateRaw.includes('/')) {
-        const parts = endDateRaw.split('/');
-        if (parts.length === 3) {
-            formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        }
-    } else {
-        formattedDate = endDateRaw;
-    }
+                        if (endDateRaw.includes('/')) {
+                            const parts = endDateRaw.split('/');
+                            if (parts.length === 3) {
+                                formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                            }
+                        } else {
+                            formattedDate = endDateRaw;
+                        }
 
-    const today = new Date();
-    const endDate = new Date(formattedDate);
-    today.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
+                        const today = new Date();
+                        const endDate = new Date(formattedDate);
+                        today.setHours(0, 0, 0, 0);
+                        endDate.setHours(0, 0, 0, 0);
 
-    const diffTime = today.getTime() - endDate.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    dueForConfirmationDays = diffDays > 0 ? diffDays.toString() : '0';
-}
+                        const diffTime = today.getTime() - endDate.getTime();
+                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                        dueForConfirmationDays = diffDays > 0 ? diffDays.toString() : '0';
+                    }
 
-transformedEmployee.dueForConfirmationDays = dueForConfirmationDays;
+                    transformedEmployee.dueForConfirmationDays = dueForConfirmationDays;
 
                 } catch (probationErr) {
                     if (probationErr.response?.status === 404) {
@@ -755,11 +755,11 @@ transformedEmployee.dueForConfirmationDays = dueForConfirmationDays;
 
                                 <div className="flex items-start mb-6">
                                     <div className="flex-shrink-0 w-10 h-10 bg-green-100 text-green-700 font-bold rounded-full flex items-center justify-center text-sm mr-3">
-                                        {employee.rsManager ? employee.rsManager.split(' ').map(n => n[0]).join('').toUpperCase() : 'AS'}
+                                        {"Anitha Singh".split(' ').map(n => n[0]).join('').toUpperCase()}
                                     </div>
                                     <div>
                                         <p className="font-semibold text-gray-800">Accepted</p>
-                                        <p className="text-sm text-gray-600">With {employee.rsManager}</p>
+                                        <p className="text-sm text-gray-600">With Anitha Singh</p>
                                     </div>
                                 </div>
 
